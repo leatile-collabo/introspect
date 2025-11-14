@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Analyze - introspect{% endblock %}
+
+{% block navigation %}
+<nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 flex items-center">
+                    <a href="/" class="flex items-center">
+                        <img src="/static/images/introspect-logo.png" alt="introspect" class="h-10">
+                    </a>
+                </div>
+                <div class="hidden md:ml-10 md:flex md:space-x-4">
+                    <a href="/dashboard" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100">Dashboard</a>
+                    <a href="/patients" class="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100">Patients</a>
+                    <a href="/analyze" class="px-3 py-2 rounded-lg text-sm font-medium text-cyan-600 bg-cyan-50">Analyze</a>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="user-name" class="text-sm text-gray-700"></span>
+                <button onclick="signOut()" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 transition duration-150">
+                    <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                    </svg>
+                    Sign Out
+                </button>
+            </div>
+        </div>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Blood Smear Analysis</h1>
+            <p class="mt-2 text-sm text-gray-600">Capture from camera or upload an image for AI-powered malaria detection</p>
+        </div>
+
+        <!-- Analysis Form -->
+        <div class="bg-white rounded-2xl shadow-lg p-8">
+            <form id="analyze-form" class="space-y-6">
+                <!-- Patient Selection -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Select Patient *
+                    </label>
+                    <select id="patient-select" name="patient_id" required class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                        <option value="">Loading patients...</option>
+                    </select>
+                </div>
+
+                <!-- Input Method Selection -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-3">
+                        Image Source *
+                    </label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <button type="button" id="btn-camera" onclick="selectInputMethod('camera')" class="input-method-btn flex flex-col items-center justify-center p-6 border-2 border-gray-300 rounded-xl hover:border-cyan-500 hover:bg-cyan-50 transition-all">
+                            <svg class="h-12 w-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            <span class="text-sm font-medium text-gray-700">Capture from Camera</span>
+                            <span class="text-xs text-gray-500 mt-1">Raspberry Pi Camera</span>
+                        </button>
+                        <button type="button" id="btn-upload" onclick="selectInputMethod('upload')" class="input-method-btn active flex flex-col items-center justify-center p-6 border-2 border-cyan-500 bg-cyan-50 rounded-xl hover:border-cyan-600 transition-all">
+                            <svg class="h-12 w-12 text-cyan-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                            <span class="text-sm font-medium text-gray-700">Upload Image</span>
+                            <span class="text-xs text-gray-500 mt-1">From device storage</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Image Upload Section (shown by default) -->
+                <div id="upload-section" class="space-y-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Blood Smear Image *
+                    </label>
+                    <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:border-cyan-400 transition-colors">
+                        <div class="space-y-1 text-center">
+                            <svg id="upload-icon" class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <div id="preview-container" class="hidden">
+                                <img id="image-preview" class="mx-auto max-h-64 rounded-lg" />
+                            </div>
+                            <div class="flex text-sm text-gray-600">
+                                <label for="image-upload" class="relative cursor-pointer bg-white rounded-md font-medium text-cyan-600 hover:text-cyan-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-cyan-500">
+                                    <span>Upload a file</span>
+                                    <input id="image-upload" name="image" type="file" accept="image/*" class="sr-only" onchange="previewImage(event)">
+                                </label>
+                                <p class="pl-1">or drag and drop</p>
+                            </div>
+                            <p class="text-xs text-gray-500">PNG, JPG, JPEG up to 20MB</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Camera Capture Section (hidden by default) -->
+                <div id="camera-section" class="hidden space-y-4">
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                        <div class="flex items-start">
+                            <svg class="h-5 w-5 text-blue-600 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <div>
+                                <h4 class="text-sm font-medium text-blue-900">Camera Capture Mode</h4>
+                                <p class="text-sm text-blue-700 mt-1">
+                                    Position your blood slide using the preview below, then capture when ready.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Camera Preview -->
+                    <div class="border-2 border-gray-300 rounded-xl overflow-hidden bg-gray-900">
+                        <div class="relative">
+                            <img id="camera-preview" src="" alt="Camera Preview" class="w-full h-auto" style="min-height: 300px; background: #1a1a1a;">
+                            <div id="preview-loading" class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75">
+                                <div class="text-center text-white">
+                                    <svg class="inline animate-spin h-8 w-8 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    <p class="text-sm">Starting camera preview...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-gray-800 p-3 flex justify-center space-x-3">
+                            <button type="button" onclick="refreshPreview()" class="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-600 transition">
+                                <svg class="inline h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                                Refresh Preview
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <p class="text-sm text-amber-800">
+                            <strong>Tip:</strong> Position the blood slide in the center of the frame. Ensure good lighting and focus before capturing.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Symptoms -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Symptoms
+                    </label>
+                    <input 
+                        type="text" 
+                        name="symptoms" 
+                        placeholder="e.g., fever, chills, headache"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    >
+                    <p class="mt-1 text-xs text-gray-500">Separate multiple symptoms with commas</p>
+                </div>
+
+                <!-- Notes -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Notes
+                    </label>
+                    <textarea 
+                        name="notes" 
+                        rows="3"
+                        placeholder="Additional observations or notes..."
+                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
+                    ></textarea>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="window.location.href='/patients'" class="px-6 py-3 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button type="submit" id="submit-btn" class="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl text-sm font-medium hover:from-cyan-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500">
+                        <span id="submit-text">Analyze Image</span>
+                        <span id="submit-loading" class="hidden">
+                            <svg class="inline animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Analyzing...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Result Display -->
+        <div id="result-container" class="hidden mt-8 bg-white rounded-2xl shadow-lg p-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Analysis Result</h2>
+
+            <div id="result-content" class="space-y-4">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <div id="confirmation-section" class="mt-6 p-6 bg-gray-50 rounded-xl border-2 border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Technician Confirmation Required</h3>
+                <p class="text-sm text-gray-600 mb-4">Please review the AI result and confirm or modify as needed:</p>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Confirmed Result *</label>
+                        <select id="confirmed-result" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                            <option value="">Select result...</option>
+                            <option value="positive">Positive</option>
+                            <option value="negative">Negative</option>
+                            <option value="inconclusive">Inconclusive</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Confirmation Notes</label>
+                        <textarea
+                            id="confirmation-notes"
+                            rows="3"
+                            placeholder="Optional notes about your confirmation..."
+                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
+                        ></textarea>
+                    </div>
+
+                    <div class="flex justify-end space-x-3">
+                        <button onclick="resetForm()" class="px-6 py-3 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button onclick="confirmResult()" id="confirm-btn" class="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl text-sm font-medium hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            <span id="confirm-text">Confirm Result</span>
+                            <span id="confirm-loading" class="hidden">
+                                <svg class="inline animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Confirming...
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confirmation Success Display -->
+        <div id="confirmation-success" class="hidden mt-8 bg-white rounded-2xl shadow-lg p-8">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                    <svg class="h-10 w-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Result Confirmed</h2>
+                <p class="text-gray-600 mb-6">The test result has been successfully confirmed and saved.</p>
+                <button onclick="resetForm()" class="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl text-sm font-medium hover:from-cyan-600 hover:to-blue-700">
+                    Analyze Another Sample
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/analyze.js"></script>
+<script>
+    requireAuth();
+    loadUserInfo();
+    loadPatients();
+</script>
+{% endblock %}
+

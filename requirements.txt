@@ -1,0 +1,27 @@
+fastapi
+uvicorn
+sqlalchemy
+alembic
+psycopg2-binary
+slowapi
+python-dotenv
+pyjwt
+passlib
+bcrypt==4.0.1
+python-multipart
+email-validator
+jinja2
+pillow
+numpy
+tensorflow
+python-magic
+aiofiles
+
+# YOLOv11 and Edge AI dependencies
+ultralytics>=8.0.0
+opencv-python
+torch
+torchvision
+
+# Raspberry Pi Camera Module 3 (install only on Raspberry Pi)
+picamera2

@@ -1,0 +1,139 @@
+Introspect is an AI-powered malaria diagnostics and surveillance system built with Clean Architecture principles. Here's a quick overview:
+
+🎯 Core Purpose
+Edge AI-powered malaria detection using blood smear image analysis with YOLOv11 on Raspberry Pi 5, designed for healthcare facilities in malaria-endemic regions.
+
+🔧 Key Features
+Dual Input Modes: Direct camera capture (Raspberry Pi Camera Module 3) or image upload
+Edge AI Processing: YOLOv11 inference runs locally without internet dependency
+Patient Management: Track patient demographics and test history
+Surveillance Dashboard: Monitor malaria cases by district, clinic, and time period
+Offline-First: Full functionality without connectivity, with sync capability
+Web Interface: Complete responsive UI with authentication
+🏗️ Architecture
+Built using Clean Architecture with:
+
+Domain Layer: Core entities (Patient, TestResult, Clinic, User)
+Application Layer: Business logic services
+Infrastructure Layer: AI inference, camera service, file storage, sync
+Presentation Layer: FastAPI REST endpoints + web UI
+🚀 Deployment Options
+Development: Works with placeholder AI results for testing
+Production: Raspberry Pi 5 with trained YOLOv11 model for real malaria detection
+API-First: RESTful design ready for Flutter mobile app integration
+The system enables healthcare workers to perform malaria diagnostics at the point of care with immediate AI-powered results, supporting both connected and offline scenarios.
+
+ Introspect Clean Architecture
+The project follows Clean Architecture principles with clear separation of concerns across four main layers:
+
+1. Domain Layer (src/entities/)
+The innermost layer containing pure business entities with no external dependencies.
+
+Core Entities (SQLAlchemy Models):
+Patient - Patient demographics (name, age, gender, national ID, village)
+TestResult - Malaria test results with AI metadata (confidence, processing time)
+Clinic - Health facility information (location, district, contact)
+User - Healthcare workers and administrators with roles
+Todo - Legacy entity from template (can be removed)
+Key Characteristics:
+
+Pure data models with no business logic
+Define database schema via SQLAlchemy ORM
+Include enums (Gender, TestStatus, SyncStatus, UserRole)
+No dependencies on outer layers
+2. Application Layer (Feature Modules)
+Business logic organized by feature modules, each containing:
+
+Module Structure Pattern:
+Feature Modules:
+src/patients/ - Patient management
+
+src/results/ - Test result processing & AI analysis
+
+src/clinics/ - Clinic management
+
+src/dashboard/ - Surveillance analytics & statistics
+
+src/sync/ - Offline synchronization
+
+src/auth/ - JWT authentication & authorization
+
+src/users/ - User management
+
+Key Characteristics:
+
+Services contain all business logic
+Models are Pydantic schemas for validation/serialization
+Services depend on Domain entities and Infrastructure services
+All operations require authenticated user (current_user: TokenData)
+3. Infrastructure Layer (src/infrastructure/)
+External services and integrations that the application depends on:
+
+ai_inference.py - YOLOv11 Malaria Detection
+Loads YOLOv11 ONNX model for edge inference
+Falls back to placeholder for development
+Returns detection results with confidence scores
+camera_service.py - Raspberry Pi Camera Integration
+Captures blood smear images via libcamera-still
+Configurable resolution and quality
+Singleton pattern for resource management
+file_storage.py - Image Storage Management
+Organized structure: uploads/clinic_id/YYYY-MM/
+UUID-based filenames for security
+Storage statistics tracking
+sync_service.py - Offline Synchronization
+Batch sync of pending test results
+Retry mechanism for failed syncs
+Placeholder HTTP sync to central server
+Key Characteristics:
+
+All use Singleton pattern for efficiency
+Can be swapped/mocked for testing
+No knowledge of business logic
+Configurable via environment variables
+4. Presentation Layer
+REST API (src/*/controller.py)
+FastAPI route handlers organized by feature:
+
+API Endpoints:
+
+/api/auth - Login, token refresh
+/api/patients - CRUD, search
+/api/results/analyze - Upload & analyze images
+/api/results/capture-and-analyze - Camera capture & analyze
+/api/clinics - Clinic management
+/api/dashboard - Surveillance statistics
+/api/sync - Offline sync operations
+Web UI (src/frontend/)
+Jinja2 templates with responsive design
+Static assets (CSS, JS, images)
+Complete web interface for all features
+5. Data Layer (src/database/)
+
+core.py
+src/database
+SQLAlchemy ORM for database abstraction
+Supports SQLite (development) and PostgreSQL (production)
+Dependency injection via DbSession = Annotated[Session, Depends(get_db)]
+Alembic for database migrations
+Dependency Flow (Clean Architecture Rules)
+Key Principles:
+
+Dependencies point inward - Outer layers depend on inner layers, never the reverse
+Domain is independent - Core entities have zero external dependencies
+Infrastructure is pluggable - Can swap AI models, databases, storage without changing business logic
+Application orchestrates - Services coordinate between domain, infrastructure, and data
+Presentation is thin - Controllers just handle HTTP, delegate to services
+Cross-Cutting Concerns
+Authentication: JWT tokens via src/auth/service.py
+Logging: Centralized via src/app_logging.py
+Error Handling: Custom exceptions in src/exceptions.py
+Rate Limiting: src/rate_limiter.py
+CORS: Configured in src/main.py
+Key Design Patterns
+Dependency Injection - FastAPI's Depends() for DB sessions, auth
+Repository Pattern - Services abstract database operations
+Singleton Pattern - Infrastructure services (AI, Camera, Storage, Sync)
+DTO Pattern - Pydantic models separate API contracts from domain entities
+Service Layer Pattern - Business logic isolated from controllers
+This architecture enables testability, maintainability, and scalability while supporting the offline-first, edge AI requirements of the malaria diagnostics system.
