@@ -8,6 +8,7 @@ let currentTestResultId = null;
 let previewInterval = null;
 let previewTimeoutId = null;
 let previewFailCount = 0;
+let capturedImageFile = null;  // Store captured image from camera
 const MAX_PREVIEW_FAILURES = 3;
 const PREVIEW_TIMEOUT_MS = 10000; // 10 second timeout per request
 
@@ -104,7 +105,7 @@ async function refreshPreview() {
         const timeoutId = setTimeout(() => controller.abort(), PREVIEW_TIMEOUT_MS);
 
         try {
-            const token = localStorage.getItem('access_token');
+            const token = getAuthToken();
             const response = await fetch('/api/results/camera/preview-frame', {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -193,6 +194,113 @@ function switchToUploadMode() {
     // Switch input method back to upload
     selectInputMethod('upload');
     showToast('Switched to image upload mode', 'info');
+}
+
+async function captureFromCamera() {
+    try {
+        const captureBtn = document.getElementById('capture-btn');
+        captureBtn.disabled = true;
+        
+        // Get the current preview image
+        const previewImg = document.getElementById('camera-preview');
+        if (!previewImg.src) {
+            showToast('Preview not ready. Please wait for preview to load.', 'error');
+            captureBtn.disabled = false;
+            return;
+        }
+
+        // Fetch the image from preview URL and convert to File
+        const response = await fetch(previewImg.src);
+        const blob = await response.blob();
+        
+        // Create a File object from the blob
+        const timestamp = new Date().toLocaleString().replace(/[\/\s:]/g, '_');
+        capturedImageFile = new File(
+            [blob], 
+            `camera_capture_${timestamp}.jpg`, 
+            { type: 'image/jpeg' }
+        );
+
+        // Show captured image preview
+        const capturePreviewUrl = URL.createObjectURL(blob);
+        showCapturedImagePreview(capturePreviewUrl);
+
+        // Show captured image with visual feedback
+        showToast('✓ Image captured! Review below before submitting.', 'success');
+        
+        // Visually indicate capture
+        const previewContainer = previewImg.parentElement;
+        previewContainer.style.borderColor = '#10b981';
+        previewContainer.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.1)';
+        
+        // Reset border after 2 seconds
+        setTimeout(() => {
+            previewContainer.style.borderColor = '#d1d5db';
+            previewContainer.style.boxShadow = 'none';
+        }, 2000);
+
+        captureBtn.disabled = false;
+    } catch (error) {
+        console.error('Error capturing from camera:', error);
+        showToast('Failed to capture image', 'error');
+        const captureBtn = document.getElementById('capture-btn');
+        captureBtn.disabled = false;
+    }
+}
+
+function showCapturedImagePreview(imageUrl) {
+    // Hide camera section and show captured image preview
+    const cameraSection = document.getElementById('camera-section');
+    const previewSection = document.getElementById('capture-preview-section');
+    
+    if (!previewSection) {
+        // Create preview section if it doesn't exist
+        const newSection = document.createElement('div');
+        newSection.id = 'capture-preview-section';
+        newSection.className = 'space-y-4 mt-6 p-4 bg-gray-50 rounded-xl border-2 border-green-200';
+        newSection.innerHTML = `
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="font-medium text-gray-900">✓ Image Captured</h4>
+                <button type="button" onclick="clearCapturedImage()" class="text-sm px-3 py-1 text-gray-600 hover:bg-gray-200 rounded">
+                    Retake
+                </button>
+            </div>
+            <img id="captured-image-preview" src="${imageUrl}" alt="Captured" class="w-full rounded-lg border border-gray-300">
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-white p-3 rounded border border-gray-200">
+                    <p class="text-xs text-gray-600">File Size</p>
+                    <p id="capture-file-size" class="text-sm font-semibold text-gray-900">-</p>
+                </div>
+                <div class="bg-white p-3 rounded border border-gray-200">
+                    <p class="text-xs text-gray-600">Ready for Analysis</p>
+                    <p class="text-sm font-semibold text-green-600">✓ Yes</p>
+                </div>
+            </div>
+            <p class="text-xs text-gray-600">
+                Image preview shows the captured blood smear. Scroll down and click "Analyze Image" to run AI inference.
+            </p>
+        `;
+        cameraSection.insertAdjacentElement('afterend', newSection);
+    } else {
+        // Update existing preview
+        document.getElementById('captured-image-preview').src = imageUrl;
+        previewSection.classList.remove('hidden');
+    }
+    
+    // Update file size
+    if (capturedImageFile) {
+        const sizeMB = (capturedImageFile.size / 1024 / 1024).toFixed(2);
+        document.getElementById('capture-file-size').textContent = `${sizeMB} MB`;
+    }
+}
+
+function clearCapturedImage() {
+    capturedImageFile = null;
+    const previewSection = document.getElementById('capture-preview-section');
+    if (previewSection) {
+        previewSection.classList.add('hidden');
+    }
+    showToast('Image cleared. Take another capture.', 'info');
 }
 
 async function loadUserInfo() {
@@ -286,6 +394,11 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
             showToast('Please select an image', 'error');
             return;
         }
+    } else if (currentInputMethod === 'camera') {
+        if (!capturedImageFile) {
+            showToast('Please capture an image from camera first', 'error');
+            return;
+        }
     }
 
     // Show loading state
@@ -305,24 +418,25 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
         let response;
 
         if (currentInputMethod === 'camera') {
-            // Camera capture mode - use capture-and-analyze endpoint
-            const captureData = new FormData();
-            captureData.append('patient_id', patientId);
-            captureData.append('clinic_id', user.clinic_id || '00000000-0000-0000-0000-000000000000');
+            // Camera capture mode - use analyze endpoint with captured image
+            const uploadData = new FormData();
+            uploadData.append('image', capturedImageFile);
+            uploadData.append('patient_id', patientId);
+            uploadData.append('clinic_id', user.clinic_id || '00000000-0000-0000-0000-000000000000');
 
             const symptoms = formData.get('symptoms');
             if (symptoms) {
-                captureData.append('symptoms', symptoms);
+                uploadData.append('symptoms', symptoms);
             }
 
             const notes = formData.get('notes');
             if (notes) {
-                captureData.append('notes', notes);
+                uploadData.append('notes', notes);
             }
 
-            response = await authenticatedFetch('/api/results/capture-and-analyze', {
+            response = await authenticatedFetch('/api/results/analyze', {
                 method: 'POST',
-                body: captureData
+                body: uploadData
             });
         } else {
             // Upload mode - use analyze endpoint
@@ -393,7 +507,26 @@ function displayResult(result) {
         confidenceColor = 'text-red-600';
     }
 
+    // Get captured image URL if available
+    let capturedImageHtml = '';
+    if (capturedImageFile) {
+        const imageUrl = URL.createObjectURL(capturedImageFile);
+        capturedImageHtml = `
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-3">Blood Smear Image</h3>
+                <div class="relative rounded-lg overflow-hidden border-2 border-gray-300">
+                    <img src="${imageUrl}" alt="Analyzed Blood Smear" class="w-full h-auto">
+                    <div class="absolute top-3 right-3 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-xs">
+                        AI Analyzed
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     content.innerHTML = `
+        ${capturedImageHtml}
+        
         <div class="flex items-center justify-center p-6 ${resultClass} rounded-xl">
             ${resultIcon}
             <div class="ml-4">
@@ -402,38 +535,89 @@ function displayResult(result) {
             </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 mt-6">
-            <div class="bg-gray-50 rounded-lg p-4">
-                <p class="text-sm text-gray-600">Processing Time</p>
-                <p class="text-lg font-semibold text-gray-900">${result.processing_time_ms.toFixed(0)} ms</p>
+        <!-- Confidence Score Progress Bar -->
+        <div class="mt-6 bg-white rounded-lg p-4 border border-gray-200">
+            <div class="flex justify-between items-center mb-2">
+                <p class="text-sm font-medium text-gray-700">Confidence Score</p>
+                <p class="text-lg font-bold ${confidenceColor}">${confidencePercent}%</p>
             </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-                <p class="text-sm text-gray-600">Test Result ID</p>
-                <p class="text-xs font-mono text-gray-900">${result.test_result_id.substring(0, 8)}...</p>
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="bg-gradient-to-r from-cyan-500 to-blue-600 h-3 rounded-full transition-all" style="width: ${confidencePercent}%"></div>
+            </div>
+            <p class="text-xs text-gray-600 mt-2">
+                ${confidenceLevel} - AI model assessment confidence level
+            </p>
+        </div>
+
+        <!-- Detailed Analysis Stats -->
+        <div class="grid grid-cols-3 gap-4 mt-6">
+            <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg p-4 border border-blue-200">
+                <p class="text-sm text-gray-600">AI Result</p>
+                <p class="text-lg font-bold text-blue-600 capitalize">${result.result}</p>
+            </div>
+            <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
+                <p class="text-sm text-gray-600">Analysis Time</p>
+                <p class="text-lg font-bold text-purple-600">${result.processing_time_ms.toFixed(0)}ms</p>
+            </div>
+            <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-300">
+                <p class="text-sm text-gray-600">Result ID</p>
+                <p class="text-xs font-mono font-bold text-gray-700">${result.test_result_id.substring(0, 8)}</p>
             </div>
         </div>
 
         ${result.result === 'positive' ? `
         <div class="mt-6 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
             <div class="flex items-start">
-                <svg class="h-5 w-5 text-red-600 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="h-6 w-6 text-red-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                 </svg>
                 <div>
-                    <p class="text-sm font-semibold text-red-900">Positive Result Detected</p>
+                    <p class="text-sm font-semibold text-red-900">⚠️ Positive Result Detected</p>
                     <p class="text-sm text-red-800 mt-1">
-                        Malaria parasites detected with ${confidencePercent}% confidence.
-                        Please review carefully and confirm the diagnosis.
+                        Malaria parasites detected in the blood smear with <span class="font-bold">${confidencePercent}%</span> confidence.
+                        <br><br>
+                        <strong>Action Required:</strong> Manual review and technician confirmation recommended. This result requires immediate attention and follow-up treatment.
                     </p>
                 </div>
             </div>
         </div>
-        ` : ''}
+        ` : result.result === 'negative' ? `
+        <div class="mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg">
+            <div class="flex items-start">
+                <svg class="h-6 w-6 text-green-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                    <p class="text-sm font-semibold text-green-900">✓ Negative Result</p>
+                    <p class="text-sm text-green-800 mt-1">
+                        No malaria parasites detected in the blood smear with <span class="font-bold">${confidencePercent}%</span> confidence.
+                        <br><br>
+                        <strong>Assessment:</strong> The sample appears normal. No evidence of malaria infection detected.
+                    </p>
+                </div>
+            </div>
+        </div>
+        ` : `
+        <div class="mt-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-lg">
+            <div class="flex items-start">
+                <svg class="h-6 w-6 text-amber-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                    <p class="text-sm font-semibold text-amber-900">⚠️ Inconclusive Result</p>
+                    <p class="text-sm text-amber-800 mt-1">
+                        The analysis is borderline with <span class="font-bold">${confidencePercent}%</span> confidence.
+                        <br><br>
+                        <strong>Recommendation:</strong> Manual microscopy review is strongly recommended. Consider retaking the sample or referring to experienced personnel for verification.
+                    </p>
+                </div>
+            </div>
+        </div>
+        `}
 
         <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p class="text-sm text-blue-800">
-                <strong>Note:</strong> This result is generated by an AI model.
-                Technician confirmation is required before finalizing the diagnosis.
+                <strong>Important:</strong> This result is generated by an AI model and should not be used as the sole basis for clinical decision-making. Technician/clinician confirmation is required before finalizing the diagnosis.
             </p>
         </div>
     `;
@@ -550,6 +734,7 @@ function resetForm() {
 
     // Reset state
     currentTestResultId = null;
+    capturedImageFile = null;
     previewFailCount = 0;
 
     // Switch back to upload mode

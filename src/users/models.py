@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from uuid import UUID
 from datetime import datetime
+from typing import Optional
 
 
 class UserResponse(BaseModel):
@@ -8,6 +9,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     first_name: str
     last_name: str
+    clinic_id: Optional[UUID] = None
 
 
 class PasswordChange(BaseModel):

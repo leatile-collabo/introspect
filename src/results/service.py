@@ -47,6 +47,9 @@ def create_test_result_from_analysis(
             # Run AI inference
             inference_result, confidence, processing_time = inference_service.analyze_image(temp_path)
             
+            # Ensure confidence is a float
+            confidence = float(confidence)
+
             # Map inference result to TestStatus
             result_mapping = {
                 InferenceResult.POSITIVE: TestStatus.Positive,
@@ -62,11 +65,15 @@ def create_test_result_from_analysis(
                 str(analysis_request.clinic_id)
             )
 
+            # Get health worker UUID
+            health_worker_id = current_user.get_uuid()
+            logging.info(f"Creating test result - health_worker_id: {health_worker_id} (type: {type(health_worker_id).__name__}), patient_id: {analysis_request.patient_id}, clinic_id: {analysis_request.clinic_id}")
+
             # Create test result record
             new_result = TestResult(
                 patient_id=analysis_request.patient_id,
                 clinic_id=analysis_request.clinic_id,
-                health_worker_id=current_user.get_uuid(),
+                health_worker_id=health_worker_id,
                 result=test_status,
                 confidence_score=confidence,
                 image_path=image_path,
@@ -92,7 +99,7 @@ def create_test_result_from_analysis(
                 os.unlink(temp_path)
                 
     except Exception as e:
-        logging.error(f"Failed to create test result from analysis. Error: {str(e)}")
+        logging.error(f"Failed to create test result from analysis. Error: {str(e)}", exc_info=True)
         db.rollback()
         raise TestResultCreationError(str(e))
 
@@ -125,6 +132,9 @@ def create_test_result_from_camera_capture(
             # Run AI inference
             inference_result, confidence, processing_time = inference_service.analyze_image(temp_image_path)
 
+            # Ensure confidence is a float
+            confidence = float(confidence)
+
             # Map inference result to TestStatus
             result_mapping = {
                 InferenceResult.POSITIVE: TestStatus.Positive,
@@ -148,11 +158,15 @@ def create_test_result_from_camera_capture(
                 str(analysis_request.clinic_id)
             )
 
+            # Get health worker UUID
+            health_worker_id = current_user.get_uuid()
+            logging.info(f"Creating test result - health_worker_id: {health_worker_id} (type: {type(health_worker_id)})")
+
             # Create test result record
             new_result = TestResult(
                 patient_id=analysis_request.patient_id,
                 clinic_id=analysis_request.clinic_id,
-                health_worker_id=current_user.get_uuid(),
+                health_worker_id=health_worker_id,
                 result=test_status,
                 confidence_score=confidence,
                 image_path=image_path,
@@ -178,7 +192,7 @@ def create_test_result_from_camera_capture(
                 os.unlink(temp_image_path)
 
     except Exception as e:
-        logging.error(f"Failed to create test result from camera capture. Error: {str(e)}")
+        logging.error(f"Failed to create test result from camera capture. Error: {str(e)}", exc_info=True)
         db.rollback()
         raise TestResultCreationError(str(e))
 
