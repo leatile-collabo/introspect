@@ -42,7 +42,7 @@ async def analyze_image(
         symptoms=symptoms
     )
 
-    test_result, confidence, processing_time = service.create_test_result_from_analysis(
+    test_result, confidence, processing_time, detections = service.create_test_result_from_analysis(
         current_user, db, analysis_request, image
     )
 
@@ -52,7 +52,8 @@ async def analyze_image(
         confidence_score=confidence,
         processing_time_ms=processing_time,
         message=f"Analysis complete: {test_result.result.value}",
-        image_path=test_result.image_path
+        image_path=test_result.image_path,
+        detections=detections
     )
 
 
@@ -77,7 +78,7 @@ async def capture_and_analyze(
         symptoms=symptoms
     )
 
-    test_result, confidence, processing_time = service.create_test_result_from_camera_capture(
+    test_result, confidence, processing_time, detections = service.create_test_result_from_camera_capture(
         current_user, db, analysis_request
     )
 
@@ -87,7 +88,8 @@ async def capture_and_analyze(
         confidence_score=confidence,
         processing_time_ms=processing_time,
         message=f"Analysis complete: {test_result.result.value}",
-        image_path=test_result.image_path
+        image_path=test_result.image_path,
+        detections=detections
     )
 
 

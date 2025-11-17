@@ -175,7 +175,7 @@ alembic upgrade head
 2. Export to ONNX format:
    ```python
    from ultralytics import YOLO
-   model = YOLO('malaria_yolov11.pt')
+   model = YOLO('malaria_yolo8.pt')
    model.export(format='onnx')
    ```
 3. Place model file in `models/` directory

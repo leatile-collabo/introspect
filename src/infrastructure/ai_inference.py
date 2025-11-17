@@ -25,12 +25,18 @@ class MalariaInferenceService:
     """
 
     def __init__(self, model_path: str = None):
-        self.model_path = model_path or os.getenv("YOLO_MODEL_PATH", "models/malaria_yolov11.onnx")
-        self.model_version = "yolov11-malaria-v1.0.0"
+        # Try YOLO8 ONNX first, then fallback to YOLO11
+        default_model = "models/malaria_yolo8.onnx"
+        if not Path(default_model).exists():
+            default_model = "models/malaria_yolov11.onnx"
+        
+        self.model_path = model_path or os.getenv("YOLO_MODEL_PATH", default_model)
+        self.model_version = "malaria-yolo8-v1.0.0"
         self.is_loaded = False
         self.model = None
         self.use_placeholder = False
         self.use_onnx = False
+        self.ultralytics_model = None
 
         # YOLOv11 configuration
         self.confidence_threshold = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.25"))
@@ -41,7 +47,7 @@ class MalariaInferenceService:
 
     def load_model(self):
         """
-        Load the YOLOv11 model (ONNX or PyTorch).
+        Load the YOLOv8 model (ONNX or PyTorch).
         Falls back to placeholder mode if model file doesn't exist or dependencies not installed.
         """
         if self.is_loaded:
@@ -57,41 +63,49 @@ class MalariaInferenceService:
         # Check if it's an ONNX model
         if self.model_path.endswith('.onnx'):
             try:
-                import onnxruntime as ort
-                self.model = ort.InferenceSession(self.model_path)
+                # Try to use YOLO with ONNX model for better inference handling
+                from ultralytics import YOLO
+                self.ultralytics_model = YOLO(self.model_path)
                 self.use_onnx = True
                 self.use_placeholder = False
                 self.is_loaded = True
-                logging.info(f"YOLOv11 ONNX model loaded successfully from {self.model_path}")
-                return
-            except ImportError:
-                logging.warning("ONNXRuntime not installed. Using placeholder mode. Install with: pip install onnxruntime")
-                self.use_placeholder = True
-                self.is_loaded = True
+                logging.info(f"YOLOv8 ONNX model loaded successfully from {self.model_path}")
                 return
             except Exception as e:
-                logging.error(f"Error loading ONNX model: {str(e)}. Using placeholder mode.")
-                self.use_placeholder = True
-                self.is_loaded = True
-                return
+                logging.warning(f"Error loading ONNX model with ultralytics: {str(e)}. Trying ONNXRuntime...")
+                
+                try:
+                    import onnxruntime as ort
+                    self.model = ort.InferenceSession(self.model_path)
+                    self.use_onnx = True
+                    self.use_placeholder = False
+                    self.is_loaded = True
+                    logging.info(f"YOLOv8 ONNX model loaded successfully with ONNXRuntime from {self.model_path}")
+                    return
+                except ImportError:
+                    logging.warning("ONNXRuntime not installed. Using placeholder mode. Install with: pip install onnxruntime")
+                    self.use_placeholder = True
+                    self.is_loaded = True
+                    return
+                except Exception as e:
+                    logging.error(f"Error loading ONNX model: {str(e)}. Using placeholder mode.")
+                    self.use_placeholder = True
+                    self.is_loaded = True
+                    return
 
         # Try PyTorch model
         try:
-            # Try to import ultralytics
             from ultralytics import YOLO
-
-            # Load YOLOv11 model
-            self.model = YOLO(self.model_path)
-            logging.info(f"YOLOv11 PyTorch model loaded successfully from {self.model_path}")
+            self.ultralytics_model = YOLO(self.model_path)
+            logging.info(f"YOLOv8 PyTorch model loaded successfully from {self.model_path}")
             self.use_placeholder = False
             self.is_loaded = True
-
         except ImportError:
             logging.warning("Ultralytics not installed. Using placeholder mode. Install with: pip install ultralytics")
             self.use_placeholder = True
             self.is_loaded = True
         except Exception as e:
-            logging.error(f"Error loading YOLOv11 model: {str(e)}. Using placeholder mode.")
+            logging.error(f"Error loading YOLOv8 model: {str(e)}. Using placeholder mode.")
             self.use_placeholder = True
             self.is_loaded = True
 
@@ -114,7 +128,7 @@ class MalariaInferenceService:
 
     def _run_yolo_inference(self, image_path: str) -> Tuple[InferenceResult, float, float, Optional[List[Dict]]]:
         """
-        Run YOLOv11 inference on the image.
+        Run YOLOv8 inference on the image.
 
         Returns:
             Tuple of (result, confidence_score, processing_time_ms, detections)
@@ -122,63 +136,68 @@ class MalariaInferenceService:
         start_time = time.time()
 
         try:
-            # Run inference
-            results = self.model.predict(
-                source=image_path,
-                conf=self.confidence_threshold,
-                iou=self.iou_threshold,
-                imgsz=self.image_size,
-                verbose=False
-            )
+            # Use ultralytics model if available
+            if self.ultralytics_model is not None:
+                # Run inference
+                results = self.ultralytics_model.predict(
+                    source=image_path,
+                    conf=self.confidence_threshold,
+                    iou=self.iou_threshold,
+                    imgsz=self.image_size,
+                    verbose=False
+                )
 
-            # Process results
-            detections = []
-            max_confidence = 0.0
+                # Process results
+                detections = []
+                max_confidence = 0.0
 
-            if len(results) > 0:
-                result = results[0]
-                boxes = result.boxes
+                if len(results) > 0:
+                    result = results[0]
+                    boxes = result.boxes
 
-                for box in boxes:
-                    conf = float(box.conf[0])
-                    cls = int(box.cls[0])
-                    class_name = result.names[cls]
+                    for box in boxes:
+                        conf = float(box.conf[0])
+                        cls = int(box.cls[0])
+                        class_name = result.names[cls] if cls in result.names else f"class_{cls}"
+                        
+                        # Get bounding box coordinates
+                        xyxy = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
 
-                    detection = {
-                        "class": class_name,
-                        "confidence": conf,
-                        "bbox": box.xyxy[0].tolist()
-                    }
-                    detections.append(detection)
+                        detection = {
+                            "class": class_name,
+                            "confidence": conf,
+                            "bbox": xyxy,
+                            "x1": xyxy[0],
+                            "y1": xyxy[1],
+                            "x2": xyxy[2],
+                            "y2": xyxy[3]
+                        }
+                        detections.append(detection)
 
-                    if conf > max_confidence:
-                        max_confidence = conf
+                        if conf > max_confidence:
+                            max_confidence = conf
 
-            # Determine result based on detections
-            # If malaria parasites detected with high confidence -> POSITIVE
-            # If no detections or low confidence -> NEGATIVE
-            # If borderline confidence -> INCONCLUSIVE
-
-            if len(detections) > 0:
-                if max_confidence > 0.7:
-                    inference_result = InferenceResult.POSITIVE
-                elif max_confidence > 0.4:
-                    inference_result = InferenceResult.INCONCLUSIVE
+                # Determine result based on detections
+                if len(detections) > 0:
+                    if max_confidence > 0.7:
+                        inference_result = InferenceResult.POSITIVE
+                    elif max_confidence > 0.4:
+                        inference_result = InferenceResult.INCONCLUSIVE
+                    else:
+                        inference_result = InferenceResult.NEGATIVE
                 else:
                     inference_result = InferenceResult.NEGATIVE
-            else:
-                inference_result = InferenceResult.NEGATIVE
-                max_confidence = 0.95  # High confidence in negative result
+                    max_confidence = 0.95  # High confidence in negative result
 
             processing_time = (time.time() - start_time) * 1000
 
-            logging.info(f"YOLOv11 inference: {inference_result.value} (confidence: {max_confidence:.2f}, "
+            logging.info(f"YOLOv8 inference: {inference_result.value} (confidence: {max_confidence:.2f}, "
                         f"detections: {len(detections)}, time: {processing_time:.2f}ms)")
 
             return inference_result, max_confidence, processing_time, detections
 
         except Exception as e:
-            logging.error(f"Error during YOLOv11 inference: {str(e)}")
+            logging.error(f"Error during YOLOv8 inference: {str(e)}")
             raise
 
     def _run_placeholder_inference(self, image_path: str) -> Tuple[InferenceResult, float, float, Optional[List[Dict]]]:
@@ -247,7 +266,7 @@ class MalariaInferenceService:
 
         return result, confidence, processing_time, detections
 
-    def analyze_image(self, image_path: str) -> Tuple[InferenceResult, float, float]:
+    def analyze_image(self, image_path: str) -> Tuple[InferenceResult, float, float, Optional[List[Dict]]]:
         """
         Analyze a blood smear image for malaria parasites.
 
@@ -255,20 +274,20 @@ class MalariaInferenceService:
             image_path: Path to the blood smear image
 
         Returns:
-            Tuple of (result, confidence_score, processing_time_ms)
+            Tuple of (result, confidence_score, processing_time_ms, detections)
         """
         try:
             # Ensure model is loaded
             if not self.is_loaded:
                 self.load_model()
 
-            # Run inference (YOLOv11 or placeholder)
+            # Run inference (YOLOv8 or placeholder)
             if self.use_placeholder:
-                result, confidence, processing_time, _ = self._run_placeholder_inference(image_path)
+                result, confidence, processing_time, detections = self._run_placeholder_inference(image_path)
             else:
-                result, confidence, processing_time, _ = self._run_yolo_inference(image_path)
+                result, confidence, processing_time, detections = self._run_yolo_inference(image_path)
 
-            return result, confidence, processing_time
+            return result, confidence, processing_time, detections
 
         except Exception as e:
             logging.error(f"Error during image analysis: {str(e)}")

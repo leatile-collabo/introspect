@@ -22,6 +22,9 @@ ultralytics>=8.0.0
 opencv-python
 torch
 torchvision
+onnx>=1.12.0
+onnxruntime>=1.14.0
+onnxslim>=0.1.71
 
 # Raspberry Pi Camera Module 3 (install only on Raspberry Pi)
 picamera2

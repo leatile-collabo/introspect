@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import UploadFile
 from . import models
 from src.entities.test_result import TestResult, TestStatus, SyncStatus
@@ -19,12 +19,12 @@ def create_test_result_from_analysis(
     db: Session,
     analysis_request: models.AnalysisRequest,
     image_file: UploadFile,
-) -> tuple[TestResult, float, float]:
+) -> tuple[TestResult, float, float, Optional[List[Dict[str, Any]]]]:
     """
     Create a test result by analyzing an uploaded image.
     
     Returns:
-        Tuple of (test_result, confidence_score, processing_time_ms)
+        Tuple of (test_result, confidence_score, processing_time_ms, detections)
     """
     try:
         # Get services
@@ -45,7 +45,7 @@ def create_test_result_from_analysis(
                 raise ValueError("Invalid image file")
             
             # Run AI inference
-            inference_result, confidence, processing_time = inference_service.analyze_image(temp_path)
+            inference_result, confidence, processing_time, detections = inference_service.analyze_image(temp_path)
             
             # Ensure confidence is a float
             confidence = float(confidence)
@@ -91,7 +91,7 @@ def create_test_result_from_analysis(
             db.refresh(new_result)
             
             logging.info(f"Created test result {new_result.id} with status {test_status.value}")
-            return new_result, confidence, processing_time
+            return new_result, confidence, processing_time, detections
             
         finally:
             # Clean up temp file
@@ -108,12 +108,12 @@ def create_test_result_from_camera_capture(
     current_user: TokenData,
     db: Session,
     analysis_request: models.AnalysisRequest,
-) -> tuple[TestResult, float, float]:
+) -> tuple[TestResult, float, float, Optional[List[Dict[str, Any]]]]:
     """
     Create a test result by capturing an image from Raspberry Pi camera and analyzing it.
 
     Returns:
-        Tuple of (test_result, confidence_score, processing_time_ms)
+        Tuple of (test_result, confidence_score, processing_time_ms, detections)
     """
     try:
         # Get services
@@ -130,7 +130,7 @@ def create_test_result_from_camera_capture(
                 raise ValueError("Invalid image captured from camera")
 
             # Run AI inference
-            inference_result, confidence, processing_time = inference_service.analyze_image(temp_image_path)
+            inference_result, confidence, processing_time, detections = inference_service.analyze_image(temp_image_path)
 
             # Ensure confidence is a float
             confidence = float(confidence)
@@ -184,7 +184,7 @@ def create_test_result_from_camera_capture(
             db.refresh(new_result)
 
             logging.info(f"Created test result {new_result.id} from camera capture with status {test_status.value}")
-            return new_result, confidence, processing_time
+            return new_result, confidence, processing_time, detections
 
         finally:
             # Clean up temp file

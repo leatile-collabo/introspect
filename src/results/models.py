@@ -1,8 +1,18 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from src.entities.test_result import TestStatus, SyncStatus
+
+class Detection(BaseModel):
+    """Detection model for individual parasite detections."""
+    class_name: str
+    confidence: float
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    bbox: Optional[List[float]] = None
 
 class TestResultBase(BaseModel):
     patient_id: UUID
@@ -54,6 +64,7 @@ class AnalysisResponse(BaseModel):
     processing_time_ms: float
     message: str
     image_path: str
+    detections: Optional[List[Dict[str, Any]]] = None
 
 class ConfirmResultRequest(BaseModel):
     """Request model for confirming a test result."""

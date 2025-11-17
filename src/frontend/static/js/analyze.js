@@ -483,6 +483,62 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
     }
 });
 
+// Draw bounding boxes on canvas for detections
+async function drawDetectionsOnImage(imageSrc, detections) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+
+            // Draw the image
+            ctx.drawImage(img, 0, 0);
+
+            // Draw detections if available
+            if (detections && detections.length > 0) {
+                detections.forEach((detection, index) => {
+                    const x1 = Math.max(0, detection.x1);
+                    const y1 = Math.max(0, detection.y1);
+                    const x2 = Math.min(canvas.width, detection.x2);
+                    const y2 = Math.min(canvas.height, detection.y2);
+
+                    // Random color for each detection
+                    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F'];
+                    const color = colors[index % colors.length];
+
+                    // Draw bounding box
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+                    // Draw label background
+                    const label = `${detection.class} ${(detection.confidence * 100).toFixed(1)}%`;
+                    ctx.font = 'bold 14px Arial';
+                    const textMetrics = ctx.measureText(label);
+                    const textWidth = textMetrics.width;
+                    const textHeight = 20;
+
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x1, Math.max(0, y1 - textHeight - 5), textWidth + 10, textHeight + 5);
+
+                    // Draw label text
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillText(label, x1 + 5, y1 - 5);
+                });
+            }
+
+            // Convert canvas to blob
+            canvas.toBlob((blob) => {
+                resolve(URL.createObjectURL(blob));
+            }, 'image/jpeg', 0.95);
+        };
+        img.src = imageSrc;
+    });
+}
+
 function displayResult(result) {
     const container = document.getElementById('result-container');
     const content = document.getElementById('result-content');
@@ -513,9 +569,9 @@ function displayResult(result) {
         const imageUrl = URL.createObjectURL(capturedImageFile);
         capturedImageHtml = `
             <div class="mb-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-3">Blood Smear Image</h3>
-                <div class="relative rounded-lg overflow-hidden border-2 border-gray-300">
-                    <img src="${imageUrl}" alt="Analyzed Blood Smear" class="w-full h-auto">
+                <h3 class="text-lg font-semibold text-gray-900 mb-3">Blood Smear Image Analysis</h3>
+                <div class="relative rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100">
+                    <img id="analyzed-image" src="${imageUrl}" alt="Analyzed Blood Smear" class="w-full h-auto">
                     <div class="absolute top-3 right-3 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-xs">
                         AI Analyzed
                     </div>
@@ -560,10 +616,31 @@ function displayResult(result) {
                 <p class="text-lg font-bold text-purple-600">${result.processing_time_ms.toFixed(0)}ms</p>
             </div>
             <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-300">
-                <p class="text-sm text-gray-600">Result ID</p>
-                <p class="text-xs font-mono font-bold text-gray-700">${result.test_result_id.substring(0, 8)}</p>
+                <p class="text-sm text-gray-600">Detections</p>
+                <p class="text-lg font-bold text-gray-700">${result.detections ? result.detections.length : 0} cells</p>
             </div>
         </div>
+
+        <!-- Detections List -->
+        ${result.detections && result.detections.length > 0 ? `
+        <div class="mt-6 bg-white rounded-lg p-4 border border-gray-200">
+            <h4 class="text-md font-semibold text-gray-900 mb-3">🔬 Detected Cells (${result.detections.length})</h4>
+            <div class="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
+                ${result.detections.map((det, idx) => `
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded border-l-4 border-cyan-500">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">Cell #${idx + 1}</p>
+                        <p class="text-xs text-gray-600">${det.class || 'Plasmodium'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-lg font-bold text-cyan-600">${(det.confidence * 100).toFixed(1)}%</p>
+                        <p class="text-xs text-gray-500">confidence</p>
+                    </div>
+                </div>
+                `).join('')}
+            </div>
+        </div>
+        ` : ''}
 
         ${result.result === 'positive' ? `
         <div class="mt-6 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
@@ -628,6 +705,18 @@ function displayResult(result) {
     // Show result and confirmation section
     container.classList.remove('hidden');
     confirmationSection.classList.remove('hidden');
+    
+    // Draw detections on the image if available
+    if (result.detections && result.detections.length > 0 && capturedImageFile) {
+        const imageUrl = URL.createObjectURL(capturedImageFile);
+        drawDetectionsOnImage(imageUrl, result.detections).then((annotatedImageUrl) => {
+            const analyzedImg = document.getElementById('analyzed-image');
+            if (analyzedImg) {
+                analyzedImg.src = annotatedImageUrl;
+            }
+        });
+    }
+    
     container.scrollIntoView({ behavior: 'smooth' });
 }
 
