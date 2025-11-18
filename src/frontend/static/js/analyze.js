@@ -441,6 +441,7 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
         } else {
             // Upload mode - use analyze endpoint
             const imageFile = formData.get('image');
+            capturedImageFile = imageFile;  // Store for display
             const uploadData = new FormData();
             uploadData.append('image', imageFile);
             uploadData.append('patient_id', patientId);
@@ -540,15 +541,27 @@ async function drawDetectionsOnImage(imageSrc, detections) {
 }
 
 function displayResult(result) {
+    console.log('=== DISPLAY RESULT CALLED ===');
+    console.log('Result:', result);
+    
+    // Get DOM elements
     const container = document.getElementById('result-container');
     const content = document.getElementById('result-content');
     const confirmationSection = document.getElementById('confirmation-section');
     const confirmedResultSelect = document.getElementById('confirmed-result');
-
+    
+    console.log('DOM Check:', { container: !!container, content: !!content, confirmationSection: !!confirmationSection, confirmedResultSelect: !!confirmedResultSelect });
+    
+    if (!container || !content) {
+        console.error('Required elements not found!');
+        return;
+    }
+    
+    // Calculate display values
     const resultClass = getResultClass(result.result);
     const resultIcon = getResultIcon(result.result);
     const confidencePercent = (result.confidence_score * 100).toFixed(1);
-
+    
     // Determine confidence level description
     let confidenceLevel = '';
     let confidenceColor = '';
@@ -563,23 +576,57 @@ function displayResult(result) {
         confidenceColor = 'text-red-600';
     }
 
-    // Get captured image URL if available
+    // Build image HTML section
     let capturedImageHtml = '';
     if (capturedImageFile) {
         const imageUrl = URL.createObjectURL(capturedImageFile);
         capturedImageHtml = `
             <div class="mb-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-3">Blood Smear Image Analysis</h3>
-                <div class="relative rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100">
-                    <img id="analyzed-image" src="${imageUrl}" alt="Analyzed Blood Smear" class="w-full h-auto">
-                    <div class="absolute top-3 right-3 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-xs">
-                        AI Analyzed
+                
+                <!-- Zoom Controls -->
+                <div class="flex items-center justify-between mb-4 p-3 bg-gray-100 rounded-lg">
+                    <div class="flex items-center space-x-2">
+                        <button onclick="zoomOut()" class="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition" title="Zoom Out">
+                            <svg class="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"></path>
+                            </svg>
+                        </button>
+                        <span id="zoom-level" class="text-sm font-medium text-gray-700 min-w-fit">100%</span>
+                        <button onclick="zoomIn()" class="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition" title="Zoom In">
+                            <svg class="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
+                            </svg>
+                        </button>
+                        <button onclick="resetZoom()" class="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm font-medium text-gray-600" title="Reset Zoom">
+                            Reset
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-600">Drag to pan • Use buttons to zoom</p>
+                </div>
+
+                <!-- Zoomable Image Container -->
+                <div id="image-container" class="relative rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-50" style="height: 500px; cursor: grab; background: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23f3f4f6%22 width=%22100%22 height=%22100%22/><rect fill=%22%23e5e7eb%22 x=%220%22 y=%220%22 width=%2250%22 height=%2250%22/><rect fill=%22%23e5e7eb%22 x=%2250%22 y=%2250%22 width=%2250%22 height=%2250%22/></svg>');">
+                    <div id="image-wrapper" class="w-full h-full" style="overflow: auto; position: relative; transform-origin: top left;">
+                        <img id="analyzed-image" src="${imageUrl}" alt="Analyzed Blood Smear" class="w-full h-auto" style="display: block; user-select: none; cursor: grab;">
+                    </div>
+                    <div class="absolute top-3 right-3 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-xs z-10">
+                        Interactive Zoom
                     </div>
                 </div>
+                
+                <p class="text-xs text-gray-500 mt-2">💡 Examine the bounding boxes by zooming in. This helps technicians verify cell detection accuracy.</p>
+            </div>
+        `;
+    } else {
+        capturedImageHtml = `
+            <div class="mb-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg">
+                <p class="text-sm text-yellow-800">⚠️ Note: Image display not available. Analysis result shown below.</p>
             </div>
         `;
     }
 
+    // Build complete result HTML
     content.innerHTML = `
         ${capturedImageHtml}
         
@@ -653,7 +700,7 @@ function displayResult(result) {
                     <p class="text-sm text-red-800 mt-1">
                         Malaria parasites detected in the blood smear with <span class="font-bold">${confidencePercent}%</span> confidence.
                         <br><br>
-                        <strong>Action Required:</strong> Manual review and technician confirmation recommended. This result requires immediate attention and follow-up treatment.
+                        <strong>Action Required:</strong> Technician confirmation recommended. This result requires immediate attention and follow-up treatment.
                     </p>
                 </div>
             </div>
@@ -685,7 +732,7 @@ function displayResult(result) {
                     <p class="text-sm text-amber-800 mt-1">
                         The analysis is borderline with <span class="font-bold">${confidencePercent}%</span> confidence.
                         <br><br>
-                        <strong>Recommendation:</strong> Manual microscopy review is strongly recommended. Consider retaking the sample or referring to experienced personnel for verification.
+                        <strong>Recommendation:</strong> Consider retaking the sample for AI analysis confirmation. Technician review is recommended for borderline cases.
                     </p>
                 </div>
             </div>
@@ -699,25 +746,47 @@ function displayResult(result) {
         </div>
     `;
 
-    // Pre-select the AI result in confirmation dropdown
-    confirmedResultSelect.value = result.result;
+    console.log('Content HTML set successfully');
 
-    // Show result and confirmation section
+    // Show result container
     container.classList.remove('hidden');
-    confirmationSection.classList.remove('hidden');
-    
-    // Draw detections on the image if available
-    if (result.detections && result.detections.length > 0 && capturedImageFile) {
-        const imageUrl = URL.createObjectURL(capturedImageFile);
-        drawDetectionsOnImage(imageUrl, result.detections).then((annotatedImageUrl) => {
-            const analyzedImg = document.getElementById('analyzed-image');
-            if (analyzedImg) {
-                analyzedImg.src = annotatedImageUrl;
-            }
-        });
+    console.log('Result container now visible');
+
+    // Show confirmation section if it exists
+    if (confirmationSection) {
+        confirmationSection.classList.remove('hidden');
+        // Pre-select the AI result
+        if (confirmedResultSelect) {
+            confirmedResultSelect.value = result.result;
+            console.log('Confirmation section pre-selected with:', result.result);
+        }
     }
     
-    container.scrollIntoView({ behavior: 'smooth' });
+    // Scroll to result
+    setTimeout(() => {
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        console.log('Scrolled to result');
+    }, 100);
+    
+    // Setup zoom/pan listeners
+    setTimeout(() => {
+        console.log('Setting up pan listeners');
+        setupPanListeners();
+    }, 150);
+    
+    // Draw detections on the image
+    if (result.detections && result.detections.length > 0 && capturedImageFile) {
+        setTimeout(() => {
+            const imageUrl = URL.createObjectURL(capturedImageFile);
+            drawDetectionsOnImage(imageUrl, result.detections).then((annotatedImageUrl) => {
+                const analyzedImg = document.getElementById('analyzed-image');
+                if (analyzedImg) {
+                    analyzedImg.src = annotatedImageUrl;
+                    console.log('Image updated with detection boxes');
+                }
+            });
+        }, 200);
+    }
 }
 
 async function confirmResult() {
@@ -809,9 +878,202 @@ function getResultIcon(result) {
     return icons[result] || '';
 }
 
+// Zoom and Pan Functionality
+let currentZoom = 1;
+const minZoom = 0.5;
+const maxZoom = 4;
+const zoomStep = 0.25;
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+let panOffsetX = 0;
+let panOffsetY = 0;
+
+function zoomIn() {
+    if (currentZoom < maxZoom) {
+        currentZoom = Math.min(currentZoom + zoomStep, maxZoom);
+        applyZoom();
+    }
+}
+
+function zoomOut() {
+    if (currentZoom > minZoom) {
+        currentZoom = Math.max(currentZoom - zoomStep, minZoom);
+        applyZoom();
+    }
+}
+
+function resetZoom() {
+    currentZoom = 1;
+    panOffsetX = 0;
+    panOffsetY = 0;
+    applyZoom();
+}
+
+function applyZoom() {
+    const wrapper = document.getElementById('image-wrapper');
+    const image = document.getElementById('analyzed-image');
+    const zoomLevel = document.getElementById('zoom-level');
+    
+    if (wrapper && image) {
+        // Apply zoom and pan offset by scaling and translating the image
+        image.style.transform = `scale(${currentZoom}) translate(${panOffsetX}px, ${panOffsetY}px)`;
+        image.style.transformOrigin = 'top left';
+        
+        // Update zoom level display
+        if (zoomLevel) {
+            zoomLevel.textContent = `${Math.round(currentZoom * 100)}%`;
+        }
+    }
+}
+
+// Pan functionality with mouse drag
+function setupPanListeners() {
+    const container = document.getElementById('image-container');
+    const image = document.getElementById('analyzed-image');
+    
+    if (!container || !image) {
+        console.warn('Image container or image not found for zoom setup');
+        return;
+    }
+    
+    // Prevent duplicate listeners
+    if (container.dataset.zoomInitialized === 'true') {
+        return;
+    }
+    container.dataset.zoomInitialized = 'true';
+    
+    // Mouse down - start dragging/panning
+    container.addEventListener('mousedown', (e) => {
+        if (currentZoom > 1) {
+            isPanning = true;
+            panStartX = e.clientX;
+            panStartY = e.clientY;
+            container.style.cursor = 'grabbing';
+            e.preventDefault();
+        }
+    });
+    
+    // Mouse move - drag/pan the image
+    container.addEventListener('mousemove', (e) => {
+        if (isPanning && currentZoom > 1) {
+            e.preventDefault();
+            const deltaX = e.clientX - panStartX;
+            const deltaY = e.clientY - panStartY;
+            
+            // Update pan offset - move in the direction of cursor movement
+            panOffsetX += deltaX / currentZoom;
+            panOffsetY += deltaY / currentZoom;
+            
+            // Update start position for next movement
+            panStartX = e.clientX;
+            panStartY = e.clientY;
+            
+            applyZoom();
+        } else if (currentZoom > 1) {
+            container.style.cursor = 'grab';
+        } else {
+            container.style.cursor = 'auto';
+        }
+    });
+    
+    // Mouse up - end dragging/panning
+    container.addEventListener('mouseup', () => {
+        if (isPanning) {
+            isPanning = false;
+            if (currentZoom > 1) {
+                container.style.cursor = 'grab';
+            } else {
+                container.style.cursor = 'auto';
+            }
+        }
+    });
+    
+    // Mouse leave - end dragging/panning
+    container.addEventListener('mouseleave', () => {
+        if (isPanning) {
+            isPanning = false;
+            container.style.cursor = 'auto';
+        }
+    });
+    
+    // Touch support for mobile dragging
+    let touchStartX = 0;
+    let touchStartY = 0;
+    
+    container.addEventListener('touchstart', (e) => {
+        if (currentZoom > 1 && e.touches.length === 1) {
+            isPanning = true;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }
+    });
+    
+    container.addEventListener('touchmove', (e) => {
+        if (isPanning && currentZoom > 1 && e.touches.length === 1) {
+            const deltaX = e.touches[0].clientX - touchStartX;
+            const deltaY = e.touches[0].clientY - touchStartY;
+            
+            panOffsetX += deltaX / currentZoom;
+            panOffsetY += deltaY / currentZoom;
+            
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            
+            applyZoom();
+        }
+    });
+    
+    container.addEventListener('touchend', () => {
+        isPanning = false;
+    });
+    
+    // Mouse wheel zoom
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+            zoomIn();
+        } else {
+            zoomOut();
+        }
+    }, { passive: false });
+    
+    // Pinch zoom for touch devices
+    let lastDistance = 0;
+    
+    container.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const distance = Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+            );
+            
+            if (lastDistance && currentZoom > minZoom && currentZoom < maxZoom) {
+                if (distance > lastDistance) {
+                    zoomIn();
+                } else {
+                    zoomOut();
+                }
+            }
+            lastDistance = distance;
+        }
+    });
+    
+    container.addEventListener('touchend', () => {
+        lastDistance = 0;
+    });
+    
+    console.log('Zoom/pan/drag listeners initialized successfully');
+}
+
 function resetForm() {
     // Stop camera preview if active
     stopCameraPreview();
+
+    // Reset zoom level
+    currentZoom = 1;
 
     // Reset form and UI
     document.getElementById('analyze-form').reset();
